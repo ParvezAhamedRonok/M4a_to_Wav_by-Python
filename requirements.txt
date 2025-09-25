@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+requests
+python-multipart
+
+
+
+
+
+
+
+
+# fastapi
+# uvicorn
+# requests

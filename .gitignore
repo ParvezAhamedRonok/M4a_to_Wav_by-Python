@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+
+# Virtual environments
+env/
+venv/
+.venv/
+
+# OS / IDE files
+.DS_Store
+.idea/
+.vscode/
+
+# Uploads & temp files
+uploads/
+*.wav
+*.m4a
+*.mp3
+
+# Environment variables
+.env
