@@ -1,6 +1,6 @@
 from fastapi import FastAPI, File, UploadFile, Body
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware   # <-- add this
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
 import subprocess
@@ -8,16 +8,15 @@ import uuid
 import base64
 import requests
 
-# Load API key (hardcoded here for demo; best practice = env var)
+# Load API key (for demo; best practice = use env var)
 GOOGLE_API_KEY = 'AIzaSyDVksTONkieWNhplzhmpXTHCsYrjdDh1Mc'
-# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 
 app = FastAPI()
 
-# ✅ Enable CORS so frontend (Next.js) can call this backend
+# Enable CORS so frontend (Next.js) can call this backend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # for dev: allow all, in prod: ["https://your-frontend.vercel.app"]
+    allow_origins=["*"],   # For dev: allow all, in prod: ["https://your-frontend.vercel.app"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -26,9 +25,13 @@ app.add_middleware(
 # Ensure uploads folder exists
 os.makedirs("uploads", exist_ok=True)
 
+
 @app.get("/")
 async def home():
-    return {"message": "Welcome! Use POST /upload/ (file) or POST /upload-base64/ (base64) to upload and transcribe audio."}
+    return {
+        "message": "Welcome! Use POST /upload/ (file) or POST /upload-base64/ (base64) to upload and transcribe audio."
+    }
+
 
 # -------- FILE UPLOAD ENDPOINT ----------
 @app.post("/upload/")
@@ -62,13 +65,46 @@ async def upload_audio(file: UploadFile = File(...)):
     # Send to Google API
     return await transcribe_with_google(encoded_audio)
 
+
 # -------- BASE64 DIRECT ENDPOINT ----------
 @app.post("/upload-base64/")
 async def upload_audio_base64(audio: str = Body(..., embed=True)):
     """
     Expects JSON body: { "audio": "BASE64_STRING" }
+    Converts it to WAV first before sending to Google.
     """
-    return await transcribe_with_google(audio)
+    file_id = str(uuid.uuid4())
+    input_path = f"uploads/{file_id}_input"
+    output_path = f"uploads/{file_id}.wav"
+
+    # Decode base64 to file
+    try:
+        with open(input_path, "wb") as f:
+            f.write(base64.b64decode(audio))
+    except Exception as e:
+        return JSONResponse(content={"error": f"Decoding base64 failed: {str(e)}"}, status_code=500)
+
+    # Convert to WAV with ffmpeg
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", input_path, "-ar", "48000", "-ac", "1", output_path],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+    except subprocess.CalledProcessError as e:
+        return JSONResponse(content={"error": f"Conversion to WAV failed: {e}"}, status_code=500)
+
+    # Read WAV and convert to base64
+    try:
+        with open(output_path, "rb") as f:
+            encoded_audio = base64.b64encode(f.read()).decode("utf-8")
+    except Exception as e:
+        return JSONResponse(content={"error": f"Reading WAV failed: {str(e)}"}, status_code=500)
+
+    # Send to Google
+    return await transcribe_with_google(encoded_audio)
+
 
 # -------- SHARED GOOGLE API CALL ----------
 async def transcribe_with_google(encoded_audio: str):
@@ -87,6 +123,10 @@ async def transcribe_with_google(encoded_audio: str):
             headers={"Content-Type": "application/json"},
             json=body
         )
+
+        # Log raw response for debugging
+        print("Google API raw response:", response.text)
+
         data = response.json()
 
         if "results" in data:
@@ -98,11 +138,10 @@ async def transcribe_with_google(encoded_audio: str):
     except Exception as e:
         return JSONResponse(content={"error": f"Google API request failed: {str(e)}"}, status_code=500)
 
+
 # -------- RUN LOCALLY --------
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=10000, reload=True)
-
-
 
 
 
